@@ -34,11 +34,13 @@ jobs:
         
       - name: Show Tauri config
         run: cat src-tauri/tauri.conf.json
+        shell: bash
         
       - name: Debug Tauri workspace
         run: |
           ls -la
           ls -la src-tauri/
+        shell: bash
           
       - name: Build Tauri app for ${{ matrix.target }}
         uses: tauri-apps/tauri-action@v0

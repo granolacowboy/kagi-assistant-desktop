@@ -12,7 +12,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        platform: [macos-latest, ubuntu-latest, windows-latest]
+        include:
+          - platform: macos-latest
+            bundles: "dmg"
+          - platform: ubuntu-latest
+            bundles: "deb,appimage,rpm"
+          - platform: windows-latest
+            bundles: "msi,nsis"
 
     runs-on: ${{ matrix.platform }}
     steps:
@@ -64,7 +70,7 @@ jobs:
           TAURI_LOG_LEVEL: debug
         with:
           tauriScript: "bun tauri"
-          args: "--verbose --bundles deb,appimage,msi,nsis,dmg"
+          args: "--verbose --bundles ${{ matrix.bundles }}"
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'app-v0.1.0' }}
           releaseName: 'App v0.1.0'
           releaseBody: 'See the assets to download this version and install.'
