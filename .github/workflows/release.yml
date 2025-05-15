@@ -93,12 +93,22 @@ jobs:
         
       - name: Show Tauri config
         run: cat src-tauri/tauri.conf.json
+        shell: bash
         
-      - name: Debug Tauri workspace
+      - name: Debug Tauri workspace (Unix)
+        if: matrix.os != 'windows-latest'
         run: |
           ls -la
           ls -la src-tauri/
-          
+        shell: bash
+        
+      - name: Debug Tauri workspace (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          dir
+          dir src-tauri\
+        shell: pwsh
+        
       - name: Build
         id: build
         uses: tauri-apps/tauri-action@v0
@@ -108,19 +118,17 @@ jobs:
           TAURI_LOG_LEVEL: debug
         with:
           tauriScript: "bun tauri"
-          args: "--target ${{ matrix.target }}"
+          args: "build --verbose --bundle --target ${{ matrix.target }}"
           tagName: ${{ github.ref_name }}
           releaseName: 'Kagi Assistant Desktop ${{ github.ref_name }}'
           releaseBody: ''
           releaseDraft: true
           prerelease: false
       
-      - name: List artifacts directory
+      - name: List artifacts directory (Unix)
+        if: matrix.os != 'windows-latest'
         run: |
-          if [ "${{ matrix.os }}" == "windows-latest" ]; then
-            ls -la src-tauri/target/release/bundle/msi/
-            ls -la src-tauri/target/release/bundle/nsis/
-          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+          if [ "${{ matrix.os }}" == "macos-latest" ]; then
             if [ "${{ matrix.target }}" == "x86_64-apple-darwin" ]; then
               ls -la src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/
             else
@@ -130,6 +138,27 @@ jobs:
             ls -la src-tauri/target/release/bundle/deb/
             ls -la src-tauri/target/release/bundle/rpm/
             ls -la src-tauri/target/release/bundle/appimage/
+          fi
+        shell: bash
+        continue-on-error: true
+        
+      - name: List artifacts directory (Windows)
+        if: matrix.os == 'windows-latest'
+        run: |
+          dir src-tauri\target\release\bundle\msi\
+          dir src-tauri\target\release\bundle\nsis\
+        shell: pwsh
+        continue-on-error: true
+        
+      - name: Manual build for macOS if needed
+        if: matrix.os == 'macos-latest' && failure()
+        run: |
+          cd src-tauri
+          bun tauri build --verbose --bundle --target ${{ matrix.target }}
+          if [ "${{ matrix.target }}" == "x86_64-apple-darwin" ]; then
+            ls -la target/x86_64-apple-darwin/release/bundle/dmg/
+          else
+            ls -la target/aarch64-apple-darwin/release/bundle/dmg/
           fi
         shell: bash
         continue-on-error: true

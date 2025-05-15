@@ -40,11 +40,21 @@ jobs:
         
       - name: Show Tauri config
         run: cat src-tauri/tauri.conf.json
+        shell: bash
         
-      - name: Debug Tauri workspace
+      - name: Debug Tauri workspace (Unix)
+        if: matrix.platform != 'windows-latest'
         run: |
           ls -la
           ls -la src-tauri/
+        shell: bash
+          
+      - name: Debug Tauri workspace (Windows)
+        if: matrix.platform == 'windows-latest'
+        run: |
+          dir
+          dir src-tauri\
+        shell: pwsh
           
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
@@ -54,7 +64,7 @@ jobs:
           TAURI_LOG_LEVEL: debug
         with:
           tauriScript: "bun tauri"
-          args: ""
+          args: "build --verbose --bundle"
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'app-v0.1.0' }}
           releaseName: 'App v0.1.0'
           releaseBody: 'See the assets to download this version and install.'
