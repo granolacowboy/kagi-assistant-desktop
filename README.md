@@ -32,7 +32,7 @@ paru -S kagi-assistant-desktop-git
 ```bash
 bun install
 
-bun run tauri build
+bun run tauri build --bundles
 ```
 
 This will build to `src-tauri/target/release/bundle`.
