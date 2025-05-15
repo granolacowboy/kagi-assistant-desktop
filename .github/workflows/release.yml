@@ -1,0 +1,117 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  create-release:
+    runs-on: ubuntu-latest
+    outputs:
+      upload_url: ${{ steps.create_release.outputs.upload_url }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Create Release
+        id: create_release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: Kagi Assistant Desktop ${{ github.ref }}
+          draft: false
+          prerelease: false
+          
+  build-and-upload:
+    needs: create-release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_name: kagi-assistant-desktop_amd64.deb
+            glob_pattern: 'target/release/bundle/deb/*.deb'
+            
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset_name: kagi-assistant-desktop_amd64.AppImage
+            glob_pattern: 'target/release/bundle/appimage/*.AppImage'
+            
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            asset_name: kagi-assistant-desktop_x64.msi
+            glob_pattern: 'target/release/bundle/msi/*.msi'
+            
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            asset_name: kagi-assistant-desktop_x64.dmg
+            glob_pattern: 'target/release/bundle/dmg/*.dmg'
+            
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            asset_name: kagi-assistant-desktop_arm64.dmg
+            glob_pattern: 'target/release/bundle/dmg/*.dmg'
+            
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+        
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+          
+      - name: Install dependencies (ubuntu only)
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+      
+      - name: Install frontend dependencies
+        run: bun install
+        
+      - name: Build
+        id: build
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          args: --target ${{ matrix.target }}
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Kagi Assistant Desktop ${{ github.ref_name }}'
+          releaseBody: ''
+          releaseDraft: true
+          prerelease: false
+      
+      - name: List artifacts directory
+        run: |
+          if [ "${{ matrix.os }}" == "windows-latest" ]; then
+            ls -la target/release/bundle/msi/
+          elif [ "${{ matrix.os }}" == "macos-latest" ]; then
+            ls -la target/release/bundle/dmg/
+          elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            ls -la target/release/bundle/deb/
+            ls -la target/release/bundle/appimage/
+          fi
+        shell: bash
+        continue-on-error: true
+      
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
+        with:
+          files: ${{ matrix.glob_pattern }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          draft: true
+          prerelease: false 
