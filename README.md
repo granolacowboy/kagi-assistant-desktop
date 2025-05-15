@@ -2,6 +2,9 @@
 
 A desktop application for [Kagi Assistant](https://kagi.com/assistant) built with Tauri.
 
+![image](https://github.com/user-attachments/assets/4946da7f-94a8-41ff-b3ce-9ab0e8f07d4c)
+
+
 ## Build
 
 ### Prerequisites
