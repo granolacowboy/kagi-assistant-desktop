@@ -34,36 +34,43 @@ jobs:
             target: x86_64-unknown-linux-gnu
             asset_name: kagi-assistant-desktop_amd64.deb
             glob_pattern: 'src-tauri/target/release/bundle/deb/kagi-assistant*.deb'
+            bundles: 'deb'
             
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             asset_name: kagi-assistant-desktop_amd64.rpm
             glob_pattern: 'src-tauri/target/release/bundle/rpm/kagi-assistant*.rpm'
+            bundles: 'rpm'
             
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             asset_name: kagi-assistant-desktop_amd64.AppImage
             glob_pattern: 'src-tauri/target/release/bundle/appimage/kagi-assistant*.AppImage'
+            bundles: 'appimage'
             
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             asset_name: kagi-assistant-desktop_x64.msi
             glob_pattern: 'src-tauri/target/release/bundle/msi/*.msi'
+            bundles: 'msi'
             
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             asset_name: kagi-assistant-desktop_x64-setup.exe
             glob_pattern: 'src-tauri/target/release/bundle/nsis/*-setup.exe'
+            bundles: 'nsis'
             
           - os: macos-latest
             target: x86_64-apple-darwin
             asset_name: kagi-assistant-desktop_x64.dmg
             glob_pattern: 'src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg'
+            bundles: 'dmg'
             
           - os: macos-latest
             target: aarch64-apple-darwin
             asset_name: kagi-assistant-desktop_arm64.dmg
             glob_pattern: 'src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg'
+            bundles: 'dmg'
             
     runs-on: ${{ matrix.os }}
     steps:
@@ -118,7 +125,7 @@ jobs:
           TAURI_LOG_LEVEL: debug
         with:
           tauriScript: "bun tauri"
-          args: "build --verbose --bundle --target ${{ matrix.target }}"
+          args: "--verbose --bundles ${{ matrix.bundles }} --target ${{ matrix.target }}"
           tagName: ${{ github.ref_name }}
           releaseName: 'Kagi Assistant Desktop ${{ github.ref_name }}'
           releaseBody: ''
@@ -154,7 +161,7 @@ jobs:
         if: matrix.os == 'macos-latest' && failure()
         run: |
           cd src-tauri
-          bun tauri build --verbose --bundle --target ${{ matrix.target }}
+          bun tauri build --verbose --bundles ${{ matrix.bundles }} --target ${{ matrix.target }}
           if [ "${{ matrix.target }}" == "x86_64-apple-darwin" ]; then
             ls -la target/x86_64-apple-darwin/release/bundle/dmg/
           else
