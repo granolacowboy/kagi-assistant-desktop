@@ -7,6 +7,9 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: write
+
 jobs:
   build:
     strategy:
@@ -71,8 +74,8 @@ jobs:
         with:
           tauriScript: "bun tauri"
           args: "--verbose --bundles ${{ matrix.bundles }}"
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'app-v0.1.0' }}
-          releaseName: 'App v0.1.0'
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.1.0' }}
+          releaseName: 'Kagi Assistant v0.1.0'
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false 
