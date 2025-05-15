@@ -6,24 +6,20 @@ function App() {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Listen for window load event 
     const handleLoad = () => {
       setTimeout(() => {
         setIsLoading(false);
-      }, 2000); // Give the window a bit of time to fully render
+      }, 2000);
     };
 
     window.addEventListener('load', handleLoad);
 
-    // Set up a listener to handle external links
     const handleMessage = async (event: MessageEvent) => {
       if (event.data && typeof event.data === 'object') {
-        // If it's a link click event
         if (event.data.type === 'link-click' && event.data.url) {
           await invoke('send_url', { url: event.data.url });
           window.open(event.data.url, '_blank');
         }
-        // If it's a navigation event
         else if (event.data.type === 'navigation' && event.data.url) {
           await invoke('set_current_url', { url: event.data.url });
         }
@@ -32,10 +28,8 @@ function App() {
 
     window.addEventListener('message', handleMessage);
 
-    // Inject scripts to capture current URL and link clicks
     const injectScript = () => {
       try {
-        // Report current URL and listen for changes
         const script = document.createElement('script');
         script.textContent = `
           // Report the initial URL
@@ -89,7 +83,6 @@ function App() {
       }
     };
 
-    // Run the script injection after a short delay
     setTimeout(injectScript, 1000);
     
     return () => {
