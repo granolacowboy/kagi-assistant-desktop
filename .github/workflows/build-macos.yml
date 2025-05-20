@@ -54,8 +54,8 @@ jobs:
         with:
           tauriScript: "bun tauri"
           args: "--verbose --bundles dmg --target ${{ matrix.target }}"
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.2.0' }}
-          releaseName: 'Kagi Assistant v0.2.0'
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.3.0' }}
+          releaseName: 'Kagi Assistant v0.3.0'
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false 

@@ -268,14 +268,50 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_window_state::Builder::default().build())
-        .invoke_handler(tauri::generate_handler![
-            send_url, 
-            set_current_url, 
-            go_to_assistant, 
-            show_window
-        ])
+        .on_window_event(|window, event| match event {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                window.hide().unwrap();
+                api.prevent_close();
+            }
+            _ => {}
+        })
         .setup(|app| {
             let main_window = app.get_webview_window("main").unwrap();
+            
+            let quit = tauri::menu::MenuItemBuilder::with_id("quit", "Quit")
+                .accelerator("CmdOrCtrl+Q")
+                .build(app).unwrap();
+            let show = tauri::menu::MenuItemBuilder::with_id("show", "Show")
+                .build(app).unwrap();
+            let hide = tauri::menu::MenuItemBuilder::with_id("hide", "Hide")
+                .build(app).unwrap();
+            
+            let menu = tauri::menu::MenuBuilder::new(app)
+                .items(&[&show, &hide, &quit])
+                .build().unwrap();
+            
+            let _tray = tauri::tray::TrayIconBuilder::new()
+                .tooltip("Kagi Assistant")
+                .menu(&menu)
+                .icon(app.default_window_icon().unwrap().clone())
+                .on_menu_event(|app, event| match event.id().0.as_str() {
+                    "quit" => {
+                        app.exit(0);
+                    }
+                    "show" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            window.show().unwrap();
+                            window.set_focus().unwrap();
+                        }
+                    }
+                    "hide" => {
+                        if let Some(window) = app.get_webview_window("main") {
+                            window.hide().unwrap();
+                        }
+                    }
+                    _ => {}
+                })
+                .build(app).unwrap();
             
             #[cfg(debug_assertions)]
             {
@@ -350,63 +386,36 @@ pub fn run() {
                     };
                     
                     if on_assistant {
-                        println!("Successfully reached assistant page, stopping script injections");
-                        if let Err(e) = continuous_window.eval(
-                            "console.log('Final URL check:', window.location.href); 
-                             if (window.location.href.includes('/assistant')) {
-                                console.log('Confirmed on assistant page, all injections stopped');
-                             }"
-                        ) {
-                            eprintln!("Failed to perform final URL check: {}", e);
-                        }
+                        println!("Successfully reached assistant page, stopping continuous check");
                         break;
                     }
                     
-                    let loading = *loading_flag.lock().unwrap();
+                    let is_already_loading = {
+                        let loading = loading_flag.lock().unwrap();
+                        *loading
+                    };
                     
-                    if i % 5 == 0 || loading {
-                        println!("Periodic script injection ({})", i);
+                    if !is_already_loading {
+                        println!("Reinjecting redirect script from continuous check");
                         if let Err(e) = continuous_window.eval(REDIRECT_SCRIPT) {
-                            eprintln!("Failed periodic script injection: {}", e);
-                        }
-                        
-                        if let Err(e) = continuous_window.eval(
-                            "console.log('Checking URL from Rust:', window.location.href); 
-                             if (window.location.href === 'https://kagi.com/' || 
-                                 window.location.href.startsWith('https://kagi.com/?') ||
-                                 window.location.href.includes('/search')) {
-                                console.log('DIRECT REDIRECT from Rust check');
-                                window.location.href = 'https://kagi.com/assistant';
-                             } else if (window.location.href.includes('/assistant')) {
-                                console.log('Already on assistant page, no redirect needed');
-                             }"
-                        ) {
-                            eprintln!("Failed to check URL: {}", e);
-                        }
-                        
-                        if loading {
-                            let mut loading_ptr = loading_flag.lock().unwrap();
-                            *loading_ptr = false;
+                            eprintln!("Failed to reinject script from continuous check: {}", e);
                         }
                     }
                     
                     i += 1;
                 }
                 
-                println!("Script injection monitoring completed");
-            });
-            
-            let window_clone = main_window.clone();
-            std::thread::spawn(move || {
-                std::thread::sleep(std::time::Duration::from_secs(1));
-                
-                if let Err(e) = window_clone.show() {
-                    eprintln!("Failed to show window: {}", e);
-                }
+                println!("Continuous check completed");
             });
             
             Ok(())
         })
+        .invoke_handler(tauri::generate_handler![
+            send_url, 
+            set_current_url, 
+            go_to_assistant, 
+            show_window
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
