@@ -48,13 +48,13 @@ jobs:
             target: x86_64-apple-darwin
             asset_name: kagi-assistant-desktop_x64.dmg
             glob_pattern: 'src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg'
-            bundles: 'dmg'
+            bundles: 'dmg,updater'
             
           - os: macos-latest
             target: aarch64-apple-darwin
             asset_name: kagi-assistant-desktop_arm64.dmg
             glob_pattern: 'src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg'
-            bundles: 'dmg'
+            bundles: 'dmg,updater'
             
     runs-on: ${{ matrix.os }}
     steps:
