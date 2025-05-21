@@ -69,13 +69,15 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_BUILD_DEBUG: true
           TAURI_LOG_LEVEL: debug
         with:
           tauriScript: "bun tauri"
           args: "--verbose --bundles ${{ matrix.bundles }}"
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.3.0' }}
-          releaseName: 'Kagi Assistant v0.3.0'
+          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.4.0' }}
+          releaseName: 'Kagi Assistant v0.4.0'
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: true
           prerelease: false 

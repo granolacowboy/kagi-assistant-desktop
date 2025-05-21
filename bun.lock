@@ -4,18 +4,19 @@
     "": {
       "name": "kagi-assistant-desktop",
       "dependencies": {
-        "@tauri-apps/api": "^2",
-        "@tauri-apps/plugin-opener": "^2",
+        "@tauri-apps/api": "^2.5.0",
+        "@tauri-apps/plugin-opener": "^2.2.7",
+        "@tauri-apps/plugin-updater": "~2",
         "react": "^18.3.1",
         "react-dom": "^18.3.1",
       },
       "devDependencies": {
-        "@tauri-apps/cli": "^2",
-        "@types/react": "^18.3.1",
-        "@types/react-dom": "^18.3.1",
-        "@vitejs/plugin-react": "^4.3.4",
-        "typescript": "~5.6.2",
-        "vite": "^6.0.3",
+        "@tauri-apps/cli": "^2.5.0",
+        "@types/react": "^18.3.21",
+        "@types/react-dom": "^18.3.7",
+        "@vitejs/plugin-react": "^4.4.1",
+        "typescript": "~5.6.3",
+        "vite": "^6.3.5",
       },
     },
   },
@@ -185,6 +186,8 @@
     "@tauri-apps/cli-win32-x64-msvc": ["@tauri-apps/cli-win32-x64-msvc@2.5.0", "", { "os": "win32", "cpu": "x64" }, "sha512-lj43EFYbnAta8pd9JnUq87o+xRUR0odz+4rixBtTUwUgdRdwQ2V9CzFtsMu6FQKpFQ6mujRK6P1IEwhL6ADRsQ=="],
 
     "@tauri-apps/plugin-opener": ["@tauri-apps/plugin-opener@2.2.7", "", { "dependencies": { "@tauri-apps/api": "^2.0.0" } }, "sha512-uduEyvOdjpPOEeDRrhwlCspG/f9EQalHumWBtLBnp3fRp++fKGLqDOyUhSIn7PzX45b/rKep//ZQSAQoIxobLA=="],
+
+    "@tauri-apps/plugin-updater": ["@tauri-apps/plugin-updater@2.7.1", "", { "dependencies": { "@tauri-apps/api": "^2.0.0" } }, "sha512-1OPqEY/z7NDVSeTEMIhD2ss/vXWdpfZ5Th2Mk0KtPR/RA6FKuOTDGZQhxoyYBk0pcZJ+nNZUbl/IujDCLBApjA=="],
 
     "@types/babel__core": ["@types/babel__core@7.20.5", "", { "dependencies": { "@babel/parser": "^7.20.7", "@babel/types": "^7.20.7", "@types/babel__generator": "*", "@types/babel__template": "*", "@types/babel__traverse": "*" } }, "sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA=="],
 
