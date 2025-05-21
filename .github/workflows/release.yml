@@ -123,6 +123,24 @@ jobs:
           releaseDraft: false
           prerelease: false
       
+      - name: Build DMG for ${{ matrix.target }}
+        if: matrix.os == 'macos-latest' # Ensure this runs only on macOS runners
+        run: |
+          echo "Building DMG for ${{ matrix.target }}..."
+          bun tauri build --bundles dmg --target ${{ matrix.target }}
+        shell: bash
+
+      - name: Upload DMG for ${{ matrix.target }}
+        if: matrix.os == 'macos-latest' # Ensure this runs only on macOS runners
+        uses: svenstaro/upload-release-action@v2
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          file: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          asset_name: kagi-assistant-desktop-${{ github.ref_name }}-${{ matrix.target }}.dmg
+          tag: ${{ github.ref_name }}
+          overwrite: true
+          body: "DMG installer for macOS (${{ matrix.target }})"
+
       - name: List artifacts directory (Unix)
         if: matrix.os != 'windows-latest'
         run: |
