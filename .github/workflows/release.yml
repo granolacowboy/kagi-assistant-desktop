@@ -126,15 +126,19 @@ jobs:
       - name: List artifacts directory (Unix)
         if: matrix.os != 'windows-latest'
         run: |
+          echo "Listing artifact directories..."
           if [ "${{ matrix.os }}" == "macos-latest" ]; then
-            if [ "${{ matrix.target }}" == "x86_64-apple-darwin" ]; then
-              ls -la src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/
-            else
-              ls -la src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/
-            fi
+            TARGET_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+            echo "Listing ${TARGET_DIR}/dmg/"
+            ls -la "${TARGET_DIR}/dmg/"
+            echo "Listing ${TARGET_DIR}/updater/"
+            ls -la "${TARGET_DIR}/updater/"
           elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
+            echo "Listing src-tauri/target/release/bundle/deb/"
             ls -la src-tauri/target/release/bundle/deb/
+            echo "Listing src-tauri/target/release/bundle/rpm/"
             ls -la src-tauri/target/release/bundle/rpm/
+            echo "Listing src-tauri/target/release/bundle/appimage/"
             ls -la src-tauri/target/release/bundle/appimage/
           fi
         shell: bash
