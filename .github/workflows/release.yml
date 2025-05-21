@@ -49,12 +49,14 @@ jobs:
             asset_name: kagi-assistant-desktop_x64
             glob_pattern: 'src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app'
             bundles: 'app,updater'
+            dmg_arch_suffix: 'x64'
             
           - os: macos-latest
             target: aarch64-apple-darwin
             asset_name: kagi-assistant-desktop_arm64
             glob_pattern: 'src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app'
             bundles: 'app,updater'
+            dmg_arch_suffix: 'aarch64'
             
     runs-on: ${{ matrix.os }}
     steps:
@@ -130,12 +132,22 @@ jobs:
           bun tauri build --bundles dmg --target ${{ matrix.target }}
         shell: bash
 
+      - name: Verify DMG file existence for ${{ matrix.target }}
+        if: matrix.os == 'macos-latest'
+        run: |
+          VERSION=$(echo "${{ github.ref_name }}" | sed 's/^v//')
+          DMG_FILENAME="Kagi Assistant_${VERSION}_${{ matrix.dmg_arch_suffix }}.dmg"
+          DMG_PATH="src-tauri/target/${{ matrix.target }}/release/bundle/dmg/${DMG_FILENAME}"
+          echo "Looking for DMG at: ${DMG_PATH}"
+          ls -l "${DMG_PATH}"
+        shell: bash
+
       - name: Upload DMG for ${{ matrix.target }}
-        if: matrix.os == 'macos-latest' # Ensure this runs only on macOS runners
+        if: matrix.os == 'macos-latest'
         uses: svenstaro/upload-release-action@v2
         with:
           repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+          file: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/Kagi Assistant_$(echo "${{ github.ref_name }}" | sed 's/^v//')_${{ matrix.dmg_arch_suffix }}.dmg
           asset_name: kagi-assistant-desktop-${{ github.ref_name }}-${{ matrix.target }}.dmg
           tag: ${{ github.ref_name }}
           overwrite: true
