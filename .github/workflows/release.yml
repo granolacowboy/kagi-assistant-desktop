@@ -46,15 +46,15 @@ jobs:
             
           - os: macos-latest
             target: x86_64-apple-darwin
-            asset_name: kagi-assistant-desktop_x64.dmg
-            glob_pattern: 'src-tauri/target/x86_64-apple-darwin/release/bundle/dmg/*.dmg'
-            bundles: 'dmg,updater'
+            asset_name: kagi-assistant-desktop_x64
+            glob_pattern: 'src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app'
+            bundles: 'app,updater'
             
           - os: macos-latest
             target: aarch64-apple-darwin
-            asset_name: kagi-assistant-desktop_arm64.dmg
-            glob_pattern: 'src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg'
-            bundles: 'dmg,updater'
+            asset_name: kagi-assistant-desktop_arm64
+            glob_pattern: 'src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app'
+            bundles: 'app,updater'
             
     runs-on: ${{ matrix.os }}
     steps:
@@ -128,11 +128,13 @@ jobs:
         run: |
           echo "Listing artifact directories..."
           if [ "${{ matrix.os }}" == "macos-latest" ]; then
-            TARGET_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
-            echo "Listing ${TARGET_DIR}/dmg/"
-            ls -la "${TARGET_DIR}/dmg/"
-            echo "Listing ${TARGET_DIR}/updater/"
-            ls -la "${TARGET_DIR}/updater/"
+            TARGET_BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+            echo "Listing ${TARGET_BUNDLE_DIR}/macos/ (for .app)"
+            ls -la "${TARGET_BUNDLE_DIR}/macos/"
+            echo "Listing ${TARGET_BUNDLE_DIR}/updater/ (for .app.tar.gz)"
+            ls -la "${TARGET_BUNDLE_DIR}/updater/"
+            echo "Listing ${TARGET_BUNDLE_DIR}/dmg/ (if created by tauri-action)"
+            ls -la "${TARGET_BUNDLE_DIR}/dmg/"
           elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
             echo "Listing src-tauri/target/release/bundle/deb/"
             ls -la src-tauri/target/release/bundle/deb/
