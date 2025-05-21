@@ -3,7 +3,6 @@ name: Build macOS App
 on:
   push:
     branches: [ main ]
-    tags: [ 'v*' ]
   pull_request:
     branches: [ main ]
 
@@ -55,9 +54,4 @@ jobs:
           TAURI_LOG_LEVEL: debug
         with:
           tauriScript: "bun tauri"
-          args: "--verbose --bundles dmg --target ${{ matrix.target }}"
-          tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v0.4.0' }}
-          releaseName: 'Kagi Assistant v0.4.0'
-          releaseBody: 'See the assets to download this version and install.'
-          releaseDraft: true
-          prerelease: false 
+          args: "--verbose --bundles dmg --target ${{ matrix.target }}" 

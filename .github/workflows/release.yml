@@ -9,26 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  create-release:
-    runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
-    steps:
-      - uses: actions/checkout@v4
-      
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          tag_name: ${{ github.ref }}
-          release_name: Kagi Assistant Desktop ${{ github.ref }}
-          draft: false
-          prerelease: false
-          
   build-and-upload:
-    needs: create-release
     strategy:
       fail-fast: false
       matrix:
@@ -124,7 +105,7 @@ jobs:
         shell: bash
         continue-on-error: true
         
-      - name: Build
+      - name: Build and Release with Tauri Action
         id: build
         uses: tauri-apps/tauri-action@v0
         env:
@@ -138,8 +119,8 @@ jobs:
           args: "--verbose --bundles ${{ matrix.bundles }} --target ${{ matrix.target }}"
           tagName: ${{ github.ref_name }}
           releaseName: 'Kagi Assistant Desktop ${{ github.ref_name }}'
-          releaseBody: ''
-          releaseDraft: true
+          releaseBody: 'Automated release of Kagi Assistant Desktop ${{ github.ref_name }}. Check assets for your platform.'
+          releaseDraft: false
           prerelease: false
       
       - name: List artifacts directory (Unix)
@@ -178,13 +159,4 @@ jobs:
             ls -la target/aarch64-apple-darwin/release/bundle/dmg/
           fi
         shell: bash
-        continue-on-error: true
-      
-      - name: Upload Release Asset
-        uses: softprops/action-gh-release@v1
-        with:
-          files: ${{ matrix.glob_pattern }}
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: ${{ github.ref_name }}
-          draft: true
-          prerelease: false 
+        continue-on-error: true 
