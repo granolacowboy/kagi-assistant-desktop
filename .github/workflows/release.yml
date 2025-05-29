@@ -78,6 +78,18 @@ jobs:
         run: |
           brew install create-dmg
       
+      - name: Configure macOS for unsigned builds
+        if: matrix.platform == 'macos-latest'
+        run: |
+          echo "Configuring for ad-hoc signing"
+          unset APPLE_CERTIFICATE 2>/dev/null || true
+          unset APPLE_CERTIFICATE_PASSWORD 2>/dev/null || true
+          unset APPLE_SIGNING_IDENTITY 2>/dev/null || true
+          unset APPLE_ID 2>/dev/null || true
+          unset APPLE_PASSWORD 2>/dev/null || true
+          unset APPLE_TEAM_ID 2>/dev/null || true
+          export CI=true
+      
       - name: Install frontend dependencies
         run: bun install
         
@@ -86,6 +98,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          CI: true
         with:
           tauriScript: "bun tauri"
           tagName: ${{ steps.get_tag.outputs.tag }}
