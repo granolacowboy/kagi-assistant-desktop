@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to build (leave empty to use latest tag)'
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -28,6 +34,21 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+      
+      - name: Get tag name
+        id: get_tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            if [ -n "${{ github.event.inputs.tag }}" ]; then
+              echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+            else
+              echo "tag=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+          fi
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -64,9 +85,9 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
           tauriScript: "bun tauri"
-          tagName: ${{ github.ref_name }}
-          releaseName: 'Kagi Assistant Desktop ${{ github.ref_name }}'
-          releaseBody: 'Automated release of Kagi Assistant Desktop ${{ github.ref_name }}. Check assets for your platform.'
+          tagName: ${{ steps.get_tag.outputs.tag }}
+          releaseName: 'Kagi Assistant Desktop ${{ steps.get_tag.outputs.tag }}'
+          releaseBody: 'Automated release of Kagi Assistant Desktop ${{ steps.get_tag.outputs.tag }}. Check assets for your platform.'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }} 
