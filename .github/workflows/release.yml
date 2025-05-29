@@ -9,56 +9,23 @@ permissions:
   contents: write
 
 jobs:
-  build-and-upload:
+  publish-tauri:
+    permissions:
+      contents: write
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            asset_name: kagi-assistant-desktop_amd64.deb
-            glob_pattern: 'src-tauri/target/release/bundle/deb/kagi-assistant*.deb'
-            bundles: 'deb'
-            
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            asset_name: kagi-assistant-desktop_amd64.rpm
-            glob_pattern: 'src-tauri/target/release/bundle/rpm/kagi-assistant*.rpm'
-            bundles: 'rpm'
-            
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            asset_name: kagi-assistant-desktop_amd64.AppImage
-            glob_pattern: 'src-tauri/target/release/bundle/appimage/kagi-assistant*.AppImage'
-            bundles: 'appimage'
-            
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            asset_name: kagi-assistant-desktop_x64.msi
-            glob_pattern: 'src-tauri/target/release/bundle/msi/*.msi'
-            bundles: 'msi'
-            
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            asset_name: kagi-assistant-desktop_x64-setup.exe
-            glob_pattern: 'src-tauri/target/release/bundle/nsis/*-setup.exe'
-            bundles: 'nsis'
-            
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            asset_name: kagi-assistant-desktop_x64
-            glob_pattern: 'src-tauri/target/x86_64-apple-darwin/release/bundle/macos/*.app'
-            bundles: 'app,updater,dmg'
-            dmg_arch_suffix: 'x64'
-            
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            asset_name: kagi-assistant-desktop_arm64
-            glob_pattern: 'src-tauri/target/aarch64-apple-darwin/release/bundle/macos/*.app'
-            bundles: 'app,updater,dmg'
-            dmg_arch_suffix: 'aarch64'
-            
-    runs-on: ${{ matrix.os }}
+          - platform: ubuntu-latest
+            args: "--bundles deb,rpm,appimage"
+          - platform: windows-latest
+            args: "--bundles msi,nsis"
+          - platform: macos-latest
+            args: "--target aarch64-apple-darwin --bundles app,dmg"
+          - platform: macos-latest
+            args: "--target x86_64-apple-darwin --bundles app,dmg"
+
+    runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
       
@@ -73,98 +40,27 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
           
       - name: Install dependencies (ubuntu only)
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.platform == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libfuse2 fuse dpkg-dev libgtk-3-0 libwebkit2gtk-4.1-0 devscripts appstream
+          sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
       
       - name: Install frontend dependencies
         run: bun install
         
-      - name: Show Tauri config
-        run: cat src-tauri/tauri.conf.json
-        shell: bash
-        
-      - name: Debug Tauri workspace (Unix)
-        if: matrix.os != 'windows-latest'
-        run: |
-          ls -la
-          ls -la src-tauri/
-        shell: bash
-        
-      - name: Debug Tauri workspace (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          dir
-          dir src-tauri\
-        shell: pwsh
-        
-      - name: Check available bundle formats
-        run: bun tauri build --help
-        shell: bash
-        continue-on-error: true
-        
-      - name: Build and Release with Tauri Action
-        id: build
-        uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_BUILD_DEBUG: true
-          TAURI_LOG_LEVEL: debug
         with:
           tauriScript: "bun tauri"
-          args: "--verbose --bundles ${{ matrix.bundles }} --target ${{ matrix.target }}"
           tagName: ${{ github.ref_name }}
           releaseName: 'Kagi Assistant Desktop ${{ github.ref_name }}'
           releaseBody: 'Automated release of Kagi Assistant Desktop ${{ github.ref_name }}. Check assets for your platform.'
           releaseDraft: false
           prerelease: false
-      
-      - name: List artifacts directory (Unix)
-        if: matrix.os != 'windows-latest'
-        run: |
-          echo "Listing artifact directories..."
-          if [ "${{ matrix.os }}" == "macos-latest" ]; then
-            TARGET_BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
-            echo "Listing ${TARGET_BUNDLE_DIR}/macos/ (for .app)"
-            ls -la "${TARGET_BUNDLE_DIR}/macos/"
-            echo "Listing ${TARGET_BUNDLE_DIR}/updater/ (for .app.tar.gz)"
-            ls -la "${TARGET_BUNDLE_DIR}/updater/"
-            echo "Listing ${TARGET_BUNDLE_DIR}/dmg/ (if created by tauri-action)"
-            ls -la "${TARGET_BUNDLE_DIR}/dmg/"
-          elif [ "${{ matrix.os }}" == "ubuntu-latest" ]; then
-            echo "Listing src-tauri/target/release/bundle/deb/"
-            ls -la src-tauri/target/release/bundle/deb/
-            echo "Listing src-tauri/target/release/bundle/rpm/"
-            ls -la src-tauri/target/release/bundle/rpm/
-            echo "Listing src-tauri/target/release/bundle/appimage/"
-            ls -la src-tauri/target/release/bundle/appimage/
-          fi
-        shell: bash
-        continue-on-error: true
-        
-      - name: List artifacts directory (Windows)
-        if: matrix.os == 'windows-latest'
-        run: |
-          dir src-tauri\target\release\bundle\msi\
-          dir src-tauri\target\release\bundle\nsis\
-        shell: pwsh
-        continue-on-error: true
-        
-      - name: Manual build for macOS if needed
-        if: matrix.os == 'macos-latest' && failure()
-        run: |
-          cd src-tauri
-          bun tauri build --verbose --bundles dmg --target ${{ matrix.target }}
-          if [ "${{ matrix.target }}" == "x86_64-apple-darwin" ]; then
-            ls -la target/x86_64-apple-darwin/release/bundle/dmg/
-          else
-            ls -la target/aarch64-apple-darwin/release/bundle/dmg/
-          fi
-        shell: bash
-        continue-on-error: true 
+          args: ${{ matrix.args }} 
