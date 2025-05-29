@@ -109,4 +109,15 @@ jobs:
           includeDebug: false
           includeRelease: true
           updaterJsonPreferNsis: false
-          args: ${{ matrix.args }} 
+          args: ${{ matrix.args }}
+          
+      - name: Codesign app bundle (macOS only)
+        if: matrix.platform == 'macos-latest'
+        run: |
+          echo "Applying ad-hoc codesigning to app bundle..."
+          find src-tauri/target -name "*.app" -type d | while read app_path; do
+            echo "Signing: $app_path"
+            codesign --force --deep --sign - "$app_path"
+            echo "Verifying signature:"
+            codesign --verify --verbose "$app_path"
+          done 
