@@ -52,7 +52,12 @@
     "category": "Productivity",
     "shortDescription": "Desktop app for Kagi Assistant",
     "longDescription": "A desktop application that provides a native experience for Kagi Assistant with login support.",
-    "createUpdaterArtifacts": true
+    "createUpdaterArtifacts": true,
+    "linux": {
+      "appimage": {
+        "bundleMediaFramework": true
+      }
+    }
   },
   "plugins": {
     "updater": {
