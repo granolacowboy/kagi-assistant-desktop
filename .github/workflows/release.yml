@@ -43,13 +43,15 @@ jobs:
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             if [ -n "${{ github.event.inputs.tag }}" ]; then
-              echo "tag=${{ github.event.inputs.tag }}" >> $GITHUB_OUTPUT
+              TAG="${{ github.event.inputs.tag }}"
             else
-              echo "tag=$(git describe --tags --abbrev=0)" >> $GITHUB_OUTPUT
+              TAG=$(git describe --tags --abbrev=0)
             fi
           else
-            echo "tag=${{ github.ref_name }}" >> $GITHUB_OUTPUT
+            TAG="${{ github.ref_name }}"
           fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "Detected tag: $TAG"
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -91,4 +93,7 @@ jobs:
           releaseBody: 'Automated release of Kagi Assistant Desktop ${{ steps.get_tag.outputs.tag }}. Check assets for your platform.'
           releaseDraft: false
           prerelease: false
+          includeDebug: false
+          includeRelease: true
+          updaterJsonPreferNsis: false
           args: ${{ matrix.args }} 
