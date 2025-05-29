@@ -93,7 +93,8 @@ jobs:
       - name: Install frontend dependencies
         run: bun install
         
-      - uses: tauri-apps/tauri-action@v0
+      - name: Build Tauri app (without upload)
+        uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -101,11 +102,6 @@ jobs:
           CI: true
         with:
           tauriScript: "bun tauri"
-          tagName: ${{ steps.get_tag.outputs.tag }}
-          releaseName: 'Kagi Assistant Desktop ${{ steps.get_tag.outputs.tag }}'
-          releaseBody: 'Automated release of Kagi Assistant Desktop ${{ steps.get_tag.outputs.tag }}. Check assets for your platform.'
-          releaseDraft: false
-          prerelease: false
           includeDebug: false
           includeRelease: true
           updaterJsonPreferNsis: false
@@ -137,6 +133,26 @@ jobs:
           find src-tauri/target -name "*.dmg" -type f | while read dmg_path; do
             echo "Removing quarantine from DMG: $dmg_path"
             xattr -dr com.apple.quarantine "$dmg_path" 2>/dev/null || true
+            
+            # Re-sign the DMG
+            echo "Re-signing DMG: $dmg_path"
+            codesign --force --sign - "$dmg_path" 2>/dev/null || true
           done
           
-          echo "macOS 15 signing fixes completed" 
+          echo "macOS 15 signing fixes completed"
+          
+      - name: Upload release assets
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tauriScript: "bun tauri"
+          tagName: ${{ steps.get_tag.outputs.tag }}
+          releaseName: 'Kagi Assistant Desktop ${{ steps.get_tag.outputs.tag }}'
+          releaseBody: 'Automated release of Kagi Assistant Desktop ${{ steps.get_tag.outputs.tag }}. Check assets for your platform.'
+          releaseDraft: false
+          prerelease: false
+          includeDebug: false
+          includeRelease: true
+          updaterJsonPreferNsis: false
+          args: --skip-build 
