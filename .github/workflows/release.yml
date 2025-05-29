@@ -93,19 +93,12 @@ jobs:
       - name: Install frontend dependencies
         run: bun install
         
-      - name: Build Tauri app (without upload)
-        uses: tauri-apps/tauri-action@v0
+      - name: Build Tauri app
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           CI: true
-        with:
-          tauriScript: "bun tauri"
-          includeDebug: false
-          includeRelease: true
-          updaterJsonPreferNsis: false
-          args: ${{ matrix.args }}
+        run: bun tauri build ${{ matrix.args }}
           
       - name: Fix macOS signing for macOS 15 (post-build)
         if: matrix.platform == 'macos-latest'
@@ -141,12 +134,12 @@ jobs:
           
           echo "macOS 15 signing fixes completed"
           
-      - name: Upload release assets
+      - name: Create or update GitHub release
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tauriScript: "bun tauri"
+          tauriScript: "echo 'skipping build' &&"
           tagName: ${{ steps.get_tag.outputs.tag }}
           releaseName: 'Kagi Assistant Desktop ${{ steps.get_tag.outputs.tag }}'
           releaseBody: 'Automated release of Kagi Assistant Desktop ${{ steps.get_tag.outputs.tag }}. Check assets for your platform.'
@@ -154,5 +147,4 @@ jobs:
           prerelease: false
           includeDebug: false
           includeRelease: true
-          updaterJsonPreferNsis: false
-          args: --skip-build 
+          updaterJsonPreferNsis: false 
