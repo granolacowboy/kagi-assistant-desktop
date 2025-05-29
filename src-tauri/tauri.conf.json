@@ -62,6 +62,8 @@
       "minimumSystemVersion": "11.0",
       "signingIdentity": "-",
       "hardenedRuntime": false,
+      "providerShortName": null,
+      "exceptionDomain": null,
       "frameworks": []
     }
   },

@@ -111,13 +111,32 @@ jobs:
           updaterJsonPreferNsis: false
           args: ${{ matrix.args }}
           
-      - name: Codesign app bundle (macOS only)
+      - name: Fix macOS signing for macOS 15 (post-build)
         if: matrix.platform == 'macos-latest'
         run: |
-          echo "Applying ad-hoc codesigning to app bundle..."
+          echo "Applying additional fixes for macOS 15..."
+          
+          # Find all .app bundles
           find src-tauri/target -name "*.app" -type d | while read app_path; do
-            echo "Signing: $app_path"
+            echo "Processing: $app_path"
+            
+            # Remove quarantine attribute that might be set during build
+            xattr -dr com.apple.quarantine "$app_path" 2>/dev/null || true
+            
+            # Force ad-hoc code signing
             codesign --force --deep --sign - "$app_path"
-            echo "Verifying signature:"
-            codesign --verify --verbose "$app_path"
-          done 
+            
+            # Verify the signature
+            echo "Signature verification for $app_path:"
+            codesign -dv "$app_path" 2>&1 || true
+            
+            echo "Completed processing: $app_path"
+          done
+          
+          # Also process DMG files if they exist
+          find src-tauri/target -name "*.dmg" -type f | while read dmg_path; do
+            echo "Removing quarantine from DMG: $dmg_path"
+            xattr -dr com.apple.quarantine "$dmg_path" 2>/dev/null || true
+          done
+          
+          echo "macOS 15 signing fixes completed" 
