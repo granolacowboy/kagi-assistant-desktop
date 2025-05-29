@@ -62,8 +62,8 @@
       "minimumSystemVersion": "11.0",
       "entitlements": "./Entitlements.plist",
       "exceptionDomain": "kagi.com",
-      "signingIdentity": null,
-      "hardenedRuntime": true,
+      "signingIdentity": "-",
+      "hardenedRuntime": false,
       "frameworks": []
     }
   },
