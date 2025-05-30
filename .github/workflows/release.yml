@@ -4,12 +4,6 @@ on:
   push:
     tags:
       - 'v*'
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: 'Tag to build (leave empty to use latest tag)'
-        required: false
-        type: string
 
 permissions:
   contents: write
@@ -34,24 +28,6 @@ jobs:
     runs-on: ${{ matrix.platform }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.inputs.tag || github.ref }}
-      
-      - name: Get tag name
-        id: get_tag
-        shell: bash
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            if [ -n "${{ github.event.inputs.tag }}" ]; then
-              TAG="${{ github.event.inputs.tag }}"
-            else
-              TAG=$(git describe --tags --abbrev=0)
-            fi
-          else
-            TAG="${{ github.ref_name }}"
-          fi
-          echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "Detected tag: $TAG"
       
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -72,186 +48,20 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y build-essential pkg-config libgtk-3-dev libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
           sudo apt-get install -y libegl1-mesa-dev libgl1-mesa-dev mesa-common-dev
-
-      - name: Install macOS dependencies
-        if: matrix.platform == 'macos-latest'
-        run: |
-          brew install create-dmg
-      
-      - name: Configure macOS for unsigned builds
-        if: matrix.platform == 'macos-latest'
-        run: |
-          echo "Configuring for ad-hoc signing"
-          unset APPLE_CERTIFICATE 2>/dev/null || true
-          unset APPLE_CERTIFICATE_PASSWORD 2>/dev/null || true
-          unset APPLE_SIGNING_IDENTITY 2>/dev/null || true
-          unset APPLE_ID 2>/dev/null || true
-          unset APPLE_PASSWORD 2>/dev/null || true
-          unset APPLE_TEAM_ID 2>/dev/null || true
-          export CI=true
       
       - name: Install frontend dependencies
         run: bun install
         
-      - name: Prepare macOS DMG environment
-        if: matrix.platform == 'macos-latest'
-        run: |
-          echo "Preparing macOS environment for DMG creation..."
-          
-          # Ensure we have proper permissions for DMG creation
-          sudo chown -R $(whoami) /usr/local/bin/ 2>/dev/null || true
-          
-          # Create any missing directories
-          mkdir -p ~/.config
-          
-          echo "macOS DMG environment prepared"
-        
-      - name: Build Tauri app
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          CI: true
-        shell: bash
-        run: |
-          echo "Building Tauri app with args: ${{ matrix.args }}"
-          
-          # Try building with DMG first
-          if ! bun tauri build ${{ matrix.args }}; then
-            echo "Build with DMG failed, trying app-only build..."
-            
-            # Extract just the target from args and rebuild without DMG
-            if [[ "${{ matrix.args }}" == *"aarch64-apple-darwin"* ]]; then
-              fallback_args="--target aarch64-apple-darwin --bundles app"
-            elif [[ "${{ matrix.args }}" == *"x86_64-apple-darwin"* ]]; then
-              fallback_args="--target x86_64-apple-darwin --bundles app"
-            else
-              fallback_args="${{ matrix.args }}"
-            fi
-            
-            echo "Retrying with fallback args: $fallback_args"
-            bun tauri build $fallback_args
-          fi
-          
-      - name: Fix macOS signing for macOS 15 (post-build)
-        if: matrix.platform == 'macos-latest'
-        run: |
-          echo "Applying additional fixes for macOS 15..."
-          
-          # Find all .app bundles
-          find src-tauri/target -name "*.app" -type d | while read app_path; do
-            echo "Processing: $app_path"
-            
-            # Remove quarantine attribute that might be set during build
-            xattr -dr com.apple.quarantine "$app_path" 2>/dev/null || true
-            
-            # Force ad-hoc code signing
-            codesign --force --deep --sign - "$app_path"
-            
-            # Verify the signature
-            echo "Signature verification for $app_path:"
-            codesign -dv "$app_path" 2>&1 || true
-            
-            echo "Completed processing: $app_path"
-          done
-          
-          # Also process DMG files if they exist
-          find src-tauri/target -name "*.dmg" -type f | while read dmg_path; do
-            echo "Removing quarantine from DMG: $dmg_path"
-            xattr -dr com.apple.quarantine "$dmg_path" 2>/dev/null || true
-            
-            # Re-sign the DMG
-            echo "Re-signing DMG: $dmg_path"
-            codesign --force --sign - "$dmg_path" 2>/dev/null || true
-          done
-          
-          # Check if we have any DMG files
-          dmg_count=$(find src-tauri/target -name "*.dmg" -type f | wc -l)
-          if [ "$dmg_count" -eq 0 ]; then
-            echo "No DMG files found - probably fell back to app-only build"
-          else
-            echo "Processed $dmg_count DMG file(s)"
-          fi
-          
-          echo "macOS 15 signing fixes completed"
-          
-      - name: Extract .app for separate distribution (arm64 only)
-        if: matrix.platform == 'macos-latest' && contains(matrix.args, 'aarch64-apple-darwin')
-        run: |
-          echo "Extracting .app file for separate distribution..."
-          
-          # Find the built .app file
-          app_file=$(find src-tauri/target/aarch64-apple-darwin/release/bundle -name "*.app" -type d | head -1)
-          
-          if [ -n "$app_file" ]; then
-            echo "Found .app file: $app_file"
-            
-            # Get the app name
-            app_name=$(basename "$app_file")
-            base_name="${app_name%.app}"
-            
-            # Copy the .app bundle directly for distribution
-            mkdir -p src-tauri/target/aarch64-apple-darwin/release/bundle/macos
-            cp -r "$app_file" "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/${base_name}-aarch64.app"
-            
-            echo "Created standalone .app: ${base_name}-aarch64.app"
-          else
-            echo "No .app file found for extraction"
-          fi
-          
-      - name: Copy artifacts to expected location
-        if: matrix.platform == 'macos-latest'
-        run: |
-          echo "Copying signed artifacts to expected location..."
-          
-          # Create the target directory structure
-          mkdir -p src-tauri/target/release/bundle/macos
-          mkdir -p src-tauri/target/release/bundle/dmg
-          
-          # Copy signed artifacts
-          if [[ "${{ matrix.args }}" == *"aarch64-apple-darwin"* ]]; then
-            source_dir="src-tauri/target/aarch64-apple-darwin/release/bundle"
-            echo "Copying from aarch64 target directory"
-          elif [[ "${{ matrix.args }}" == *"x86_64-apple-darwin"* ]]; then
-            source_dir="src-tauri/target/x86_64-apple-darwin/release/bundle"
-            echo "Copying from x86_64 target directory"
-          else
-            source_dir="src-tauri/target/release/bundle"
-            echo "Using default target directory"
-          fi
-          
-          # Copy all bundle types if they exist
-          if [ -d "$source_dir" ]; then
-            echo "Copying from: $source_dir"
-            cp -r "$source_dir"/* src-tauri/target/release/bundle/ 2>/dev/null || true
-            
-            # List what we copied
-            echo "Artifacts copied:"
-            find src-tauri/target/release/bundle -type f -name "*" | head -20
-          else
-            echo "Source directory $source_dir not found"
-          fi
-          
-      - name: Copy artifacts to expected location (non-macOS)
-        if: matrix.platform != 'macos-latest'
-        run: |
-          echo "Ensuring artifacts are in expected location for ${{ matrix.platform }}..."
-          
-          # For non-macOS platforms, artifacts should already be in the right place
-          # but let's verify and list them
-          echo "Checking for artifacts:"
-          find src-tauri/target -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.msi" -o -name "*.exe" | head -10
-          
-      - name: Create or update GitHub release
-        uses: tauri-apps/tauri-action@v0
+      - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         with:
-          tauriScript: "echo 'skipping build' &&"
-          tagName: ${{ steps.get_tag.outputs.tag }}
-          releaseName: 'Kagi Assistant Desktop ${{ steps.get_tag.outputs.tag }}'
-          releaseBody: 'Automated release of Kagi Assistant Desktop ${{ steps.get_tag.outputs.tag }}. Check assets for your platform.'
+          tauriScript: "bun tauri"
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Kagi Assistant Desktop ${{ github.ref_name }}'
+          releaseBody: 'Automated release of Kagi Assistant Desktop ${{ github.ref_name }}. Check assets for your platform.'
           releaseDraft: false
           prerelease: false
-          includeDebug: false
-          includeRelease: true
-          updaterJsonPreferNsis: false 
+          args: ${{ matrix.args }} 
