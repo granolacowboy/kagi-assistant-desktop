@@ -93,12 +93,43 @@ jobs:
       - name: Install frontend dependencies
         run: bun install
         
+      - name: Prepare macOS DMG environment
+        if: matrix.platform == 'macos-latest'
+        run: |
+          echo "Preparing macOS environment for DMG creation..."
+          
+          # Ensure we have proper permissions for DMG creation
+          sudo chown -R $(whoami) /usr/local/bin/ 2>/dev/null || true
+          
+          # Create any missing directories
+          mkdir -p ~/.config
+          
+          echo "macOS DMG environment prepared"
+        
       - name: Build Tauri app
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           CI: true
-        run: bun tauri build ${{ matrix.args }}
+        run: |
+          echo "Building Tauri app with args: ${{ matrix.args }}"
+          
+          # Try building with DMG first
+          if ! bun tauri build ${{ matrix.args }}; then
+            echo "Build with DMG failed, trying app-only build..."
+            
+            # Extract just the target from args and rebuild without DMG
+            if [[ "${{ matrix.args }}" == *"aarch64-apple-darwin"* ]]; then
+              fallback_args="--target aarch64-apple-darwin --bundles app"
+            elif [[ "${{ matrix.args }}" == *"x86_64-apple-darwin"* ]]; then
+              fallback_args="--target x86_64-apple-darwin --bundles app"
+            else
+              fallback_args="${{ matrix.args }}"
+            fi
+            
+            echo "Retrying with fallback args: $fallback_args"
+            bun tauri build $fallback_args
+          fi
           
       - name: Fix macOS signing for macOS 15 (post-build)
         if: matrix.platform == 'macos-latest'
@@ -131,6 +162,14 @@ jobs:
             echo "Re-signing DMG: $dmg_path"
             codesign --force --sign - "$dmg_path" 2>/dev/null || true
           done
+          
+          # Check if we have any DMG files
+          dmg_count=$(find src-tauri/target -name "*.dmg" -type f | wc -l)
+          if [ "$dmg_count" -eq 0 ]; then
+            echo "No DMG files found - probably fell back to app-only build"
+          else
+            echo "Processed $dmg_count DMG file(s)"
+          fi
           
           echo "macOS 15 signing fixes completed"
           
