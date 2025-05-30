@@ -134,6 +134,49 @@ jobs:
           
           echo "macOS 15 signing fixes completed"
           
+      - name: Copy artifacts to expected location
+        if: matrix.platform == 'macos-latest'
+        run: |
+          echo "Copying signed artifacts to expected location..."
+          
+          # Create the target directory structure
+          mkdir -p src-tauri/target/release/bundle/macos
+          mkdir -p src-tauri/target/release/bundle/dmg
+          
+          # Copy signed artifacts
+          if [[ "${{ matrix.args }}" == *"aarch64-apple-darwin"* ]]; then
+            source_dir="src-tauri/target/aarch64-apple-darwin/release/bundle"
+            echo "Copying from aarch64 target directory"
+          elif [[ "${{ matrix.args }}" == *"x86_64-apple-darwin"* ]]; then
+            source_dir="src-tauri/target/x86_64-apple-darwin/release/bundle"
+            echo "Copying from x86_64 target directory"
+          else
+            source_dir="src-tauri/target/release/bundle"
+            echo "Using default target directory"
+          fi
+          
+          # Copy all bundle types if they exist
+          if [ -d "$source_dir" ]; then
+            echo "Copying from: $source_dir"
+            cp -r "$source_dir"/* src-tauri/target/release/bundle/ 2>/dev/null || true
+            
+            # List what we copied
+            echo "Artifacts copied:"
+            find src-tauri/target/release/bundle -type f -name "*" | head -20
+          else
+            echo "Source directory $source_dir not found"
+          fi
+          
+      - name: Copy artifacts to expected location (non-macOS)
+        if: matrix.platform != 'macos-latest'
+        run: |
+          echo "Ensuring artifacts are in expected location for ${{ matrix.platform }}..."
+          
+          # For non-macOS platforms, artifacts should already be in the right place
+          # but let's verify and list them
+          echo "Checking for artifacts:"
+          find src-tauri/target -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.msi" -o -name "*.exe" | head -10
+          
       - name: Create or update GitHub release
         uses: tauri-apps/tauri-action@v0
         env:
