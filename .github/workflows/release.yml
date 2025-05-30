@@ -174,6 +174,30 @@ jobs:
           
           echo "macOS 15 signing fixes completed"
           
+      - name: Extract .app for separate distribution (arm64 only)
+        if: matrix.platform == 'macos-latest' && contains(matrix.args, 'aarch64-apple-darwin')
+        run: |
+          echo "Extracting .app file for separate distribution..."
+          
+          # Find the built .app file
+          app_file=$(find src-tauri/target/aarch64-apple-darwin/release/bundle -name "*.app" -type d | head -1)
+          
+          if [ -n "$app_file" ]; then
+            echo "Found .app file: $app_file"
+            
+            # Get the app name
+            app_name=$(basename "$app_file")
+            base_name="${app_name%.app}"
+            
+            # Copy the .app bundle directly for distribution
+            mkdir -p src-tauri/target/aarch64-apple-darwin/release/bundle/macos
+            cp -r "$app_file" "src-tauri/target/aarch64-apple-darwin/release/bundle/macos/${base_name}-aarch64.app"
+            
+            echo "Created standalone .app: ${base_name}-aarch64.app"
+          else
+            echo "No .app file found for extraction"
+          fi
+          
       - name: Copy artifacts to expected location
         if: matrix.platform == 'macos-latest'
         run: |
