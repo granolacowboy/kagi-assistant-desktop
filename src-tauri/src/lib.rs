@@ -1,24 +1,4 @@
-use tauri::{Emitter, Window};
 use tauri_plugin_updater::UpdaterExt;
-
-#[tauri::command]
-fn send_url(url: &str) -> String {
-    format!("URL received: {}", url)
-}
-
-#[tauri::command]
-fn set_current_url(url: &str) -> String {
-    format!("Current URL set to: {}", url)
-}
-
-#[tauri::command]
-async fn go_to_assistant(window: Window) {
-    if let Err(e) = window.emit("go-to-assistant", ()) {
-        eprintln!("Failed to send go-to-assistant event: {}", e);
-    }
-}
-
-
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -38,16 +18,8 @@ pub fn run() {
                     eprintln!("Failed to check for updates: {}", e);
                 }
             });
-
-
-
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![
-            send_url,
-            set_current_url,
-            go_to_assistant
-        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
