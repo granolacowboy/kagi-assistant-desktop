@@ -1,0 +1,293 @@
+name: Security Scan
+
+on:
+  schedule:
+    # Run security scans daily at 2 AM
+    - cron: '0 2 * * *'
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+  actions: read
+
+jobs:
+  dependency-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 23
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Run npm audit
+        run: |
+          echo "## NPM Security Audit" >> security_report.md
+          npm audit --audit-level moderate || true
+          npm audit --json > npm_audit.json || true
+
+      - name: Check for high/critical vulnerabilities
+        id: npm-vulns
+        run: |
+          # Check for high or critical vulnerabilities
+          HIGH_VULNS=$(jq '.metadata.vulnerabilities.high // 0' npm_audit.json)
+          CRITICAL_VULNS=$(jq '.metadata.vulnerabilities.critical // 0' npm_audit.json)
+          
+          echo "High vulnerabilities: $HIGH_VULNS"
+          echo "Critical vulnerabilities: $CRITICAL_VULNS"
+          
+          if [ "$HIGH_VULNS" -gt 0 ] || [ "$CRITICAL_VULNS" -gt 0 ]; then
+            echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
+            echo "high_count=$HIGH_VULNS" >> $GITHUB_OUTPUT
+            echo "critical_count=$CRITICAL_VULNS" >> $GITHUB_OUTPUT
+          else
+            echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Auto-fix vulnerabilities
+        if: steps.npm-vulns.outputs.has_vulnerabilities == 'true'
+        run: |
+          echo "Attempting to auto-fix vulnerabilities..."
+          npm audit fix --force || true
+          
+          # Check if fixes were applied
+          if git diff --quiet; then
+            echo "No automatic fixes available"
+          else
+            echo "Automatic fixes applied"
+            
+            # Commit fixes if they exist
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            
+            git add package-lock.json package.json || true
+            git commit -m "security: auto-fix npm vulnerabilities [automated]" || true
+            
+            # Only push if this is not a PR
+            if [ "${{ github.event_name }}" != "pull_request" ]; then
+              git push origin main || true
+            fi
+          fi
+
+      - name: Upload npm audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-audit-results
+          path: npm_audit.json
+
+  rust-security-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run Rust security audit
+        working-directory: src-tauri
+        run: |
+          echo "## Rust Security Audit" >> ../security_report.md
+          cargo audit --json > ../rust_audit.json || true
+          cargo audit || true
+
+      - name: Check for Rust vulnerabilities
+        id: rust-vulns
+        run: |
+          if [ -f rust_audit.json ]; then
+            VULN_COUNT=$(jq '.vulnerabilities.count // 0' rust_audit.json)
+            echo "Rust vulnerabilities: $VULN_COUNT"
+            
+            if [ "$VULN_COUNT" -gt 0 ]; then
+              echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
+              echo "vuln_count=$VULN_COUNT" >> $GITHUB_OUTPUT
+            else
+              echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Upload Rust audit results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-audit-results
+          path: rust_audit.json
+
+  codeql-analysis:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: javascript, typescript
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 23
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v1
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+
+  trivy-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: '.'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+
+      - name: Upload Trivy scan results
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: 'trivy-results.sarif'
+
+  security-report:
+    runs-on: ubuntu-latest
+    needs: [dependency-scan, rust-security-scan, codeql-analysis, trivy-scan]
+    if: always()
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download audit results
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-audit-results'
+          merge-multiple: true
+
+      - name: Generate security report
+        run: |
+          echo "# Security Scan Report - $(date)" > security_report.md
+          echo "" >> security_report.md
+          
+          # NPM vulnerabilities summary
+          if [ -f npm_audit.json ]; then
+            echo "## NPM Dependencies" >> security_report.md
+            LOW=$(jq '.metadata.vulnerabilities.low // 0' npm_audit.json)
+            MODERATE=$(jq '.metadata.vulnerabilities.moderate // 0' npm_audit.json)
+            HIGH=$(jq '.metadata.vulnerabilities.high // 0' npm_audit.json)
+            CRITICAL=$(jq '.metadata.vulnerabilities.critical // 0' npm_audit.json)
+            
+            echo "- **Critical**: $CRITICAL" >> security_report.md
+            echo "- **High**: $HIGH" >> security_report.md
+            echo "- **Moderate**: $MODERATE" >> security_report.md
+            echo "- **Low**: $LOW" >> security_report.md
+            echo "" >> security_report.md
+          fi
+          
+          # Rust vulnerabilities summary
+          if [ -f rust_audit.json ]; then
+            echo "## Rust Dependencies" >> security_report.md
+            RUST_VULNS=$(jq '.vulnerabilities.count // 0' rust_audit.json)
+            echo "- **Total vulnerabilities**: $RUST_VULNS" >> security_report.md
+            echo "" >> security_report.md
+          fi
+          
+          # Add scan timestamp
+          echo "**Scan completed**: $(date)" >> security_report.md
+
+      - name: Create issue for critical vulnerabilities
+        if: needs.dependency-scan.outputs.has_vulnerabilities == 'true' || needs.rust-security-scan.outputs.has_vulnerabilities == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            
+            // Read security report
+            let reportContent = '';
+            try {
+              reportContent = fs.readFileSync('security_report.md', 'utf8');
+            } catch (error) {
+              reportContent = 'Security scan completed with issues detected.';
+            }
+            
+            // Check if there's already an open security issue
+            const issues = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              labels: ['security', 'automated'],
+              state: 'open'
+            });
+            
+            const existingIssue = issues.data.find(issue => 
+              issue.title.includes('Security Vulnerabilities Detected')
+            );
+            
+            if (existingIssue) {
+              // Update existing issue
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: existingIssue.number,
+                body: `## Updated Security Scan Results\n\n${reportContent}\n\n_This is an automated update from the security scan workflow._`
+              });
+            } else {
+              // Create new issue
+              await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: '🚨 Security Vulnerabilities Detected - Automated Scan',
+                body: `${reportContent}\n\n---\n\n**Action Required**: Please review and address the security vulnerabilities identified above.\n\n_This issue was created automatically by the security scan workflow._`,
+                labels: ['security', 'automated', 'high-priority']
+              });
+            }
+
+      - name: Upload security report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report
+          path: security_report.md
+
+      - name: Security scan summary
+        if: always()
+        run: |
+          echo "## Security Scan Summary" >> $GITHUB_STEP_SUMMARY
+          
+          if [ -f security_report.md ]; then
+            cat security_report.md >> $GITHUB_STEP_SUMMARY
+          fi
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Workflow Status**: ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Scan Date**: $(date)" >> $GITHUB_STEP_SUMMARY

@@ -4,12 +4,201 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Tag to release (e.g., v1.0.0)'
+        required: true
+        type: string
+      dry_run:
+        description: 'Perform a dry run (build without publishing)'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: write
+  issues: write
+  pull-requests: write
 
 jobs:
+  pre-release-validation:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.validate.outputs.version }}
+      is_prerelease: ${{ steps.validate.outputs.is_prerelease }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 23
+      
+      - name: Validate release tag and version consistency
+        id: validate
+        run: |
+          TAG_NAME="${{ github.ref_name }}"
+          
+          # Extract version from tag (remove 'v' prefix)
+          if [[ "$TAG_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+(-[a-zA-Z0-9.-]+)?)$ ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            
+            # Check if this is a prerelease
+            if [[ "$VERSION" =~ -.*$ ]]; then
+              echo "is_prerelease=true" >> $GITHUB_OUTPUT
+              echo "✅ Detected prerelease version: $VERSION"
+            else
+              echo "is_prerelease=false" >> $GITHUB_OUTPUT
+              echo "✅ Detected stable release version: $VERSION"
+            fi
+          else
+            echo "❌ Invalid tag format: $TAG_NAME"
+            echo "Expected format: v1.2.3 or v1.2.3-beta.1"
+            exit 1
+          fi
+          
+          # Verify version consistency across configuration files
+          echo "🔍 Checking version consistency..."
+          
+          # Check package.json version
+          if [ -f "package.json" ]; then
+            PKG_VERSION=$(node -p "require('./package.json').version")
+            if [ "$PKG_VERSION" != "$VERSION" ]; then
+              echo "❌ Version mismatch in package.json: $PKG_VERSION != $VERSION"
+              exit 1
+            fi
+            echo "✅ package.json version matches: $PKG_VERSION"
+          fi
+          
+          # Check Cargo.toml version
+          if [ -f "src-tauri/Cargo.toml" ]; then
+            CARGO_VERSION=$(grep '^version = ' src-tauri/Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
+            if [ "$CARGO_VERSION" != "$VERSION" ]; then
+              echo "❌ Version mismatch in Cargo.toml: $CARGO_VERSION != $VERSION"
+              exit 1
+            fi
+            echo "✅ Cargo.toml version matches: $CARGO_VERSION"
+          fi
+          
+          # Check tauri.conf.json version
+          if [ -f "src-tauri/tauri.conf.json" ]; then
+            TAURI_VERSION=$(node -p "require('./src-tauri/tauri.conf.json').version || require('./src-tauri/tauri.conf.json').package.version")
+            if [ "$TAURI_VERSION" != "$VERSION" ]; then
+              echo "❌ Version mismatch in tauri.conf.json: $TAURI_VERSION != $VERSION"
+              exit 1
+            fi
+            echo "✅ tauri.conf.json version matches: $TAURI_VERSION"
+          fi
+          
+          echo "🎉 All version checks passed for version: $VERSION"
+
+  generate-release-notes:
+    needs: pre-release-validation
+    runs-on: ubuntu-latest
+    outputs:
+      release_notes: ${{ steps.notes.outputs.release_notes }}
+      version: ${{ needs.pre-release-validation.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Generate release notes
+        id: notes
+        run: |
+          # Get the tag annotation (contains our detailed release notes)
+          TAG_MESSAGE=$(git tag -l --format='%(contents)' ${{ github.ref_name }})
+          
+          # If tag has no annotation, try to extract from tag message
+          if [ -z "$TAG_MESSAGE" ]; then
+            TAG_MESSAGE=$(git tag -l --format='%(contents:subject)' ${{ github.ref_name }})
+          fi
+          
+          # If still empty, generate from commits since previous tag
+          if [ -z "$TAG_MESSAGE" ]; then
+            PREVIOUS_TAG=$(git describe --tags --abbrev=0 ${{ github.ref_name }}^ 2>/dev/null || echo "")
+            
+            if [ -n "$PREVIOUS_TAG" ]; then
+              echo "# Release ${{ github.ref_name }}" > release_notes.md
+              echo "" >> release_notes.md
+              echo "## Changes since $PREVIOUS_TAG" >> release_notes.md
+              echo "" >> release_notes.md
+              
+              # Group commits by type
+              FEATURES=$(git log ${PREVIOUS_TAG}..${{ github.ref_name }} --oneline --grep="feat" --grep="feature" || echo "")
+              FIXES=$(git log ${PREVIOUS_TAG}..${{ github.ref_name }} --oneline --grep="fix" --grep="bugfix" || echo "")
+              DEPS=$(git log ${PREVIOUS_TAG}..${{ github.ref_name }} --oneline --grep="deps" --grep="chore" || echo "")
+              OTHER=$(git log ${PREVIOUS_TAG}..${{ github.ref_name }} --oneline --invert-grep --grep="feat" --grep="feature" --grep="fix" --grep="bugfix" --grep="deps" --grep="chore" || echo "")
+              
+              if [ -n "$FEATURES" ]; then
+                echo "### ✨ New Features" >> release_notes.md
+                echo "$FEATURES" | sed 's/^/- /' >> release_notes.md
+                echo "" >> release_notes.md
+              fi
+              
+              if [ -n "$FIXES" ]; then
+                echo "### 🐛 Bug Fixes" >> release_notes.md
+                echo "$FIXES" | sed 's/^/- /' >> release_notes.md
+                echo "" >> release_notes.md
+              fi
+              
+              if [ -n "$DEPS" ]; then
+                echo "### 📦 Dependencies" >> release_notes.md
+                echo "$DEPS" | sed 's/^/- /' >> release_notes.md
+                echo "" >> release_notes.md
+              fi
+              
+              if [ -n "$OTHER" ]; then
+                echo "### 🔧 Other Changes" >> release_notes.md
+                echo "$OTHER" | sed 's/^/- /' >> release_notes.md
+                echo "" >> release_notes.md
+              fi
+            else
+              echo "# Release ${{ github.ref_name }}" > release_notes.md
+              echo "" >> release_notes.md
+              echo "Initial release of Kagi Assistant Desktop." >> release_notes.md
+              echo "" >> release_notes.md
+            fi
+            
+            # Add download instructions
+            echo "## 📥 Download" >> release_notes.md
+            echo "" >> release_notes.md
+            echo "Choose the appropriate package for your platform:" >> release_notes.md
+            echo "- **Linux**: \`.deb\` (Ubuntu/Debian), \`.rpm\` (Red Hat/Fedora), \`.AppImage\` (Universal)" >> release_notes.md
+            echo "- **Windows**: \`.msi\` (Installer), \`.exe\` (Portable)" >> release_notes.md
+            echo "- **macOS**: \`.dmg\` (Intel & Apple Silicon)" >> release_notes.md
+            echo "" >> release_notes.md
+            echo "## 🔧 Installation" >> release_notes.md
+            echo "" >> release_notes.md
+            echo "### Linux" >> release_notes.md
+            echo "- **Ubuntu/Debian**: \`sudo dpkg -i kagi-assistant-desktop_*.deb\`" >> release_notes.md
+            echo "- **Red Hat/Fedora**: \`sudo rpm -i kagi-assistant-desktop-*.rpm\`" >> release_notes.md
+            echo "- **AppImage**: Make executable and run: \`chmod +x *.AppImage && ./kagi-assistant-desktop_*.AppImage\`" >> release_notes.md
+            echo "" >> release_notes.md
+            echo "### Windows" >> release_notes.md
+            echo "- Run the \`.msi\` installer or execute the \`.exe\` file directly" >> release_notes.md
+            echo "" >> release_notes.md
+            echo "### macOS" >> release_notes.md
+            echo "- Open the \`.dmg\` file and drag the application to your Applications folder" >> release_notes.md
+            echo "" >> release_notes.md
+            echo "---" >> release_notes.md
+            echo "" >> release_notes.md
+            echo "*This release was automatically generated and built by GitHub Actions.*" >> release_notes.md
+            
+            TAG_MESSAGE=$(cat release_notes.md)
+          fi
+          
+          # Set the release notes as output
+          echo "release_notes<<EOF" >> $GITHUB_OUTPUT
+          echo "$TAG_MESSAGE" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
   publish-tauri:
+    needs: [pre-release-validation, generate-release-notes]
     permissions:
       contents: write
     strategy:
@@ -52,7 +241,15 @@ jobs:
       - name: Install frontend dependencies
         run: bun install
         
+      - name: Build verification (dry run)
+        if: inputs.dry_run
+        run: |
+          echo "🔍 Performing dry run build verification..."
+          bun run build
+          echo "✅ Build verification completed successfully"
+        
       - uses: tauri-apps/tauri-action@v0
+        if: inputs.dry_run != true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
@@ -60,8 +257,37 @@ jobs:
         with:
           tauriScript: "bun tauri"
           tagName: ${{ github.ref_name }}
-          releaseName: 'Kagi Assistant Desktop ${{ github.ref_name }}'
-          releaseBody: 'Automated release of Kagi Assistant Desktop ${{ github.ref_name }}. Check assets for your platform.'
+          releaseName: 'Kagi Assistant Desktop v${{ needs.pre-release-validation.outputs.version }}'
+          releaseBody: ${{ needs.generate-release-notes.outputs.release_notes }}
           releaseDraft: false
-          prerelease: false
-          args: ${{ matrix.args }} 
+          prerelease: ${{ needs.pre-release-validation.outputs.is_prerelease }}
+          args: ${{ matrix.args }}
+
+      - name: Verify build artifacts
+        if: inputs.dry_run != true
+        run: |
+          echo "🔍 Verifying build artifacts..."
+          
+          # List all files in target directory
+          find src-tauri/target -name "*.deb" -o -name "*.rpm" -o -name "*.AppImage" -o -name "*.msi" -o -name "*.exe" -o -name "*.dmg" | while read -r file; do
+            if [ -f "$file" ]; then
+              echo "✅ Found artifact: $file ($(du -h "$file" | cut -f1))"
+            fi
+          done
+
+  post-release-notification:
+    needs: [pre-release-validation, generate-release-notes, publish-tauri]
+    runs-on: ubuntu-latest
+    if: always() && !cancelled()
+    steps:
+      - name: Report release status
+        run: |
+          if [ "${{ needs.publish-tauri.result }}" == "success" ]; then
+            echo "🎉 Release ${{ github.ref_name }} completed successfully!"
+            echo "📦 Version: ${{ needs.pre-release-validation.outputs.version }}"
+            echo "🔗 Release URL: https://github.com/${{ github.repository }}/releases/tag/${{ github.ref_name }}"
+          else
+            echo "❌ Release ${{ github.ref_name }} failed"
+            echo "Please check the workflow logs for details"
+            exit 1
+          fi

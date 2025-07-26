@@ -1,0 +1,153 @@
+name: Upstream Sync
+
+on:
+  schedule:
+    # Run every 6 hours
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+    inputs:
+      force_sync:
+        description: 'Force sync even if conflicts exist'
+        required: false
+        default: 'false'
+        type: boolean
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+jobs:
+  upstream-sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0
+
+      - name: Setup Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Add upstream remote
+        run: |
+          git remote add upstream https://github.com/0xGingi/kagi-assistant-desktop.git || true
+          git fetch upstream
+
+      - name: Check for upstream changes
+        id: check-changes
+        run: |
+          UPSTREAM_COMMIT=$(git rev-parse upstream/main)
+          CURRENT_COMMIT=$(git rev-parse HEAD)
+          
+          if [ "$UPSTREAM_COMMIT" = "$CURRENT_COMMIT" ]; then
+            echo "No upstream changes detected"
+            echo "changes=false" >> $GITHUB_OUTPUT
+          else
+            echo "Upstream changes detected"
+            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "upstream_commit=$UPSTREAM_COMMIT" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Attempt automatic merge
+        if: steps.check-changes.outputs.changes == 'true'
+        id: auto-merge
+        run: |
+          # Try to merge automatically
+          if git merge upstream/main --no-edit; then
+            echo "Auto-merge successful"
+            echo "merge_status=success" >> $GITHUB_OUTPUT
+          else
+            echo "Auto-merge failed - conflicts detected"
+            echo "merge_status=conflict" >> $GITHUB_OUTPUT
+            git merge --abort
+          fi
+
+      - name: Handle conflicts automatically
+        if: steps.auto-merge.outputs.merge_status == 'conflict'
+        run: |
+          # Create a conflict resolution strategy
+          echo "Attempting automatic conflict resolution..."
+          
+          # Reset to our main branch
+          git reset --hard HEAD
+          
+          # Try merge with our strategy (prefer our changes for config files)
+          git merge upstream/main -X ours --no-edit || {
+            # If that fails, try theirs strategy for most files but keep our configs
+            git merge --abort
+            git merge upstream/main -X theirs --no-edit || {
+              # Final fallback: create a manual resolution branch
+              git merge --abort
+              echo "Creating conflict resolution branch..."
+              
+              BRANCH_NAME="auto-upstream-sync-$(date +%Y%m%d-%H%M%S)"
+              git checkout -b "$BRANCH_NAME"
+              
+              # Start merge and resolve common conflicts
+              git merge upstream/main --no-edit || true
+              
+              # Auto-resolve common conflicts
+              # Keep our package.json dependencies but update scripts
+              if [ -f package.json.orig ]; then
+                echo "Resolving package.json conflicts..."
+                # This is a simplified resolution - in practice you'd want more sophisticated logic
+                cp package.json package.json.backup
+                git checkout --ours package.json
+              fi
+              
+              # Keep our Tauri config
+              if [ -f src-tauri/tauri.conf.json.orig ]; then
+                echo "Resolving tauri.conf.json conflicts..."
+                git checkout --ours src-tauri/tauri.conf.json
+              fi
+              
+              # Accept upstream changes for source code
+              find src-tauri/src -name "*.rs" -exec git checkout --theirs {} \; 2>/dev/null || true
+              
+              # Stage resolved files
+              git add .
+              
+              # Complete the merge if possible
+              if git commit --no-edit 2>/dev/null; then
+                echo "Conflicts resolved automatically"
+                git checkout main
+                git merge "$BRANCH_NAME" --no-edit
+                git branch -d "$BRANCH_NAME"
+              else
+                echo "Manual intervention required"
+                git checkout main
+                # Keep the branch for manual resolution
+                echo "Branch $BRANCH_NAME created for manual conflict resolution"
+                exit 1
+              fi
+            }
+          }
+
+      - name: Push changes
+        if: steps.check-changes.outputs.changes == 'true'
+        run: |
+          git push origin main
+
+      - name: Trigger version bump workflow
+        if: steps.check-changes.outputs.changes == 'true'
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: 'version-bump.yml',
+              ref: 'main'
+            });
+
+      - name: Create summary
+        if: steps.check-changes.outputs.changes == 'true'
+        run: |
+          echo "## Upstream Sync Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- ✅ Successfully synced with upstream" >> $GITHUB_STEP_SUMMARY
+          echo "- 🔄 Upstream commit: ${{ steps.check-changes.outputs.upstream_commit }}" >> $GITHUB_STEP_SUMMARY
+          echo "- 🚀 Version bump workflow triggered" >> $GITHUB_STEP_SUMMARY
